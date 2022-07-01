@@ -50,7 +50,6 @@ if __name__ == '__main__':
     content = read_json(content)
     items_as_list = [*json_parser(content)]
     final_output = create_output(items_as_list)
-    print(final_output)
     for key, value in final_output.items():
         print(f'{key} = {value}')
     htmlifier(create_output(items_as_list))   
