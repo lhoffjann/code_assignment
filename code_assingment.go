@@ -58,7 +58,7 @@ func ScanByTable(data []byte, atEOF bool) (advance int, token []byte, err error)
 func generateOutput(channel chan []byte) {
 	cmd := exec.Command("exiftool", "-listx")
 	stdout, _ := cmd.StdoutPipe()
-	err := cmd.Start()
+	cmd.Start()
 	scanner := bufio.NewScanner(stdout)
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024)
