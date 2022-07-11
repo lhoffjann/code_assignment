@@ -69,9 +69,7 @@ func generateOutput(channel chan []byte) {
 	go func() {
 		for scanner.Scan() {
 			m := scanner.Text()
-			if error2 := xml.Unmarshal([]byte(m), &xmlinput); error2 != nil {
-				fmt.Println(error2)
-			}
+			xml.Unmarshal([]byte(m), &xmlinput)
 
 			for i := 0; i < len(xmlinput.Tag); i++ {
 				languages := make(map[string]string)
@@ -86,17 +84,10 @@ func generateOutput(channel chan []byte) {
 				x.Type = xmlinput.Tag[i].Type
 				jsonOutput.Tag = append(jsonOutput.Tag, x)
 			}
-			b, err := json.Marshal(jsonOutput)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
+			b, _ := json.Marshal(jsonOutput)
 			channel <- b
 		}
 		close(channel)
-		if err != nil {
-			fmt.Println(err)
-		}
 	}()
 
 }
