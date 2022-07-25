@@ -64,7 +64,7 @@ type Tags struct {
 	Type     string            `json:"type"`
 }
 
-func getOutput(ctx context.Context) {
+func returnOutput(ctx context.Context) {
 
 	cmd := exec.CommandContext(ctx, "exiftool", "-listx")
 	stdout, _ := cmd.StdoutPipe()
@@ -82,7 +82,7 @@ func getOutput(ctx context.Context) {
 					languages[xmlinput.Tag[i].Desc[j].Lang] = xmlinput.Tag[i].Desc[j].Text
 				}
 				x := Tags{}
-				x.Path = (xmlinput.Name + ":" + xmlinput.Tag[i].Name)
+				x.Path = xmlinput.Name + ":" + xmlinput.Tag[i].Name
 				x.Group = xmlinput.Name
 				x.Desc = languages
 				x.Writable = xmlinput.Tag[i].Writable
@@ -95,13 +95,12 @@ func getOutput(ctx context.Context) {
 
 	}()
 	<-ctx.Done()
-	//go io.Copy(os.Stdout, out)
 }
 func myHandler(w http.ResponseWriter, _ *http.Request) {
 	log.Print("client connected, returning json")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go getOutput(ctx)
+	go returnOutput(ctx)
 	for n := range channel {
 		err := json.NewEncoder(w).Encode(n)
 		w.(http.Flusher).Flush()
