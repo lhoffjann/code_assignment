@@ -1,28 +1,57 @@
 package main
 
 import (
-	"bufio"
+	"context"
 	"encoding/json"
 	"encoding/xml"
-	"fmt"
+	"log"
 	"net/http"
 	"os/exec"
-	"regexp"
 )
 
-type Table struct {
-	XMLName xml.Name `xml:"table"`
+var channel chan JSONOutput
+
+type Taginfo struct {
+	XMLName xml.Name `xml:"taginfo"`
 	Text    string   `xml:",chardata"`
-	Name    string   `xml:"name,attr"`
-	Tag     []struct {
-		Name     string `xml:"name,attr"`
-		Type     string `xml:"type,attr"`
-		Writable string `xml:"writable,attr"`
-		Desc     []struct {
+	Table   []struct {
+		Text string `xml:",chardata"`
+		Name string `xml:"name,attr"`
+		G0   string `xml:"g0,attr"`
+		G1   string `xml:"g1,attr"`
+		G2   string `xml:"g2,attr"`
+		Desc []struct {
 			Text string `xml:",chardata"`
 			Lang string `xml:"lang,attr"`
 		} `xml:"desc"`
-	} `xml:"tag"`
+		Tag []struct {
+			Text     string `xml:",chardata"`
+			ID       string `xml:"id,attr"`
+			Name     string `xml:"name,attr"`
+			Type     string `xml:"type,attr"`
+			Writable string `xml:"writable,attr"`
+			G2       string `xml:"g2,attr"`
+			Count    string `xml:"count,attr"`
+			Index    string `xml:"index,attr"`
+			G1       string `xml:"g1,attr"`
+			Desc     []struct {
+				Text string `xml:",chardata"`
+				Lang string `xml:"lang,attr"`
+			} `xml:"desc"`
+			Values []struct {
+				Text  string `xml:",chardata"`
+				Index string `xml:"index,attr"`
+				Key   []struct {
+					Text string `xml:",chardata"`
+					ID   string `xml:"id,attr"`
+					Val  []struct {
+						Text string `xml:",chardata"`
+						Lang string `xml:"lang,attr"`
+					} `xml:"val"`
+				} `xml:"key"`
+			} `xml:"values"`
+		} `xml:"tag"`
+	} `xml:"table"`
 }
 type JSONOutput struct {
 	Tag []Tags `json:"tags"`
@@ -35,42 +64,18 @@ type Tags struct {
 	Type     string            `json:"type"`
 }
 
-var regexsplit = regexp.MustCompile("</table>")
-var regexsplit1 = regexp.MustCompile("<taginfo>")
-var channel chan []byte
+func getOutput(ctx context.Context) {
 
-func ScanByTable(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
-	}
-	if loc, loc1 := regexsplit.FindIndex(data), regexsplit1.FindIndex(data); loc != nil && loc1 != nil {
-		return loc[1] + 1, data[loc1[1]+1 : loc[1]], nil
-	}
-	if loc := regexsplit.FindIndex(data); loc != nil {
-		return loc[1] + 1, data[0:loc[1]], nil
-	}
-	if atEOF {
-		return len(data), data, nil
-	}
-	return 0, nil, nil
-}
-
-func generateOutput(channel chan []byte) {
-	cmd := exec.Command("exiftool", "-listx")
+	cmd := exec.CommandContext(ctx, "exiftool", "-listx")
 	stdout, _ := cmd.StdoutPipe()
 	cmd.Start()
-	scanner := bufio.NewScanner(stdout)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-	scanner.Split(ScanByTable)
-	xmlinput := Table{}
-	jsonOutput := JSONOutput{}
-
 	go func() {
-		for scanner.Scan() {
-			m := scanner.Text()
-			xml.Unmarshal([]byte(m), &xmlinput)
+		m := Taginfo{}
+		jsonOutput := JSONOutput{}
 
+		dec := xml.NewDecoder(stdout)
+		dec.Decode(&m)
+		for _, xmlinput := range m.Table {
 			for i := 0; i < len(xmlinput.Tag); i++ {
 				languages := make(map[string]string)
 				for j := 0; j < len(xmlinput.Tag[i].Desc); j++ {
@@ -83,26 +88,31 @@ func generateOutput(channel chan []byte) {
 				x.Writable = xmlinput.Tag[i].Writable
 				x.Type = xmlinput.Tag[i].Type
 				jsonOutput.Tag = append(jsonOutput.Tag, x)
+				channel <- jsonOutput
 			}
-			b, _ := json.Marshal(jsonOutput)
-			channel <- b
 		}
 		close(channel)
+
 	}()
-
+	<-ctx.Done()
+	//go io.Copy(os.Stdout, out)
 }
-
-func myhandler(w http.ResponseWriter, r *http.Request) {
-
-	go generateOutput(channel)
+func myHandler(w http.ResponseWriter, _ *http.Request) {
+	log.Print("Client connected, returning json")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go getOutput(ctx)
 	for n := range channel {
-		b := string(n)
-		fmt.Fprintf(w, b)
+		err := json.NewEncoder(w).Encode(n)
+		if err != nil {
+			log.Print("client is gone, shutting down")
+			<-ctx.Done()
+		}
 		w.(http.Flusher).Flush()
 	}
 }
 func main() {
-	channel = make(chan []byte)
-	http.HandleFunc("/", myhandler)
+	channel = make(chan JSONOutput)
+	http.HandleFunc("/", myHandler)
 	http.ListenAndServe(":8080", nil)
 }
