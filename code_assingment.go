@@ -107,6 +107,7 @@ func myHandler(w http.ResponseWriter, _ *http.Request) {
 		if err != nil {
 			log.Print("client is gone, shutting down")
 			<-ctx.Done()
+			w.(http.Flusher).Flush()
 		}
 		w.(http.Flusher).Flush()
 	}
