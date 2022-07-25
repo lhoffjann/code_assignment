@@ -98,18 +98,18 @@ func getOutput(ctx context.Context) {
 	//go io.Copy(os.Stdout, out)
 }
 func myHandler(w http.ResponseWriter, _ *http.Request) {
-	log.Print("Client connected, returning json")
+	log.Print("client connected, returning json")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go getOutput(ctx)
 	for n := range channel {
 		err := json.NewEncoder(w).Encode(n)
+		w.(http.Flusher).Flush()
 		if err != nil {
 			log.Print("client is gone, shutting down")
 			<-ctx.Done()
-			w.(http.Flusher).Flush()
 		}
-		w.(http.Flusher).Flush()
+
 	}
 }
 func main() {
